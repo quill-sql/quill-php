@@ -1,4 +1,7 @@
 <?php
+
+namespace Quill;
+
 $ENV = 'production'; // You can set the environment variable dynamically in your actual implementation
 define('HOST', $ENV === 'development' ? 'http://localhost:8080' : 'https://quill-344421.uc.r.appspot.com');
 

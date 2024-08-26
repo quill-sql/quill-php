@@ -1,7 +1,7 @@
 {
-  "name": "quill.co/quill-php",
+  "name": "quill/quill-php",
+  "version": "0.1.1",
   "description": "Quill PHP SDK",
-  "version": "0.1.0",
   "require": {
     "php": ">=8.0",
     "symfony/http-foundation": "^7.1",
@@ -12,7 +12,7 @@
   },
   "autoload": {
     "psr-4": {
-      "MySDK\\": "src/"
+      "Quill\\": "src/"
     }
   },
   "license": "MIT"
