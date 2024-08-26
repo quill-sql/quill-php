@@ -1,5 +1,5 @@
 {
-  "name": "quill/quill-php",
+  "name": "quill.co/quill-php",
   "description": "Quill PHP SDK",
   "version": "0.1.0",
   "require": {
