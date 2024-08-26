@@ -1,6 +1,7 @@
 {
   "name": "quill/quill-php",
   "description": "Quill PHP SDK",
+  "version": "0.1.0",
   "require": {
     "php": ">=8.0",
     "symfony/http-foundation": "^7.1",
