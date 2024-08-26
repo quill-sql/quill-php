@@ -12,7 +12,7 @@ function connectToMysql($config)
   $password = $config['password'] ?? '';
   $database = $config['database'] ?? '';
   $port = $config['port'] ?? '3306';
-  $pool = new mysqli('p:' . $host, $username, $password, $database, $port);
+  $pool = new \mysqli('p:' . $host, $username, $password, $database, $port);
   return $pool;
 }
 
