@@ -1,6 +1,6 @@
 {
   "name": "quill/quill-php",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "Quill PHP SDK",
   "require": {
     "php": ">=8.0",
