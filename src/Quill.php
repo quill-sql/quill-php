@@ -310,7 +310,7 @@ class CachedConnection
       );
 
       return $newResult;
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
       error_log('Query error: ' . $e->getMessage());
       return ['error' => 'An error occurred while executing the query.'];
     }
@@ -318,7 +318,7 @@ class CachedConnection
 
   public function close()
   {
-    if ($this->pool instanceof mysqli) {
+    if ($this->pool instanceof \mysqli) {
       $this->pool->close();
     }
   }
@@ -460,7 +460,7 @@ class Quill
       }
 
       if (!isset($metadata['task'])) {
-        return ['error' => 'Missing task.', 'status' => 'error', 'data' => new stdClass()];
+        return ['error' => 'Missing task.', 'status' => 'error', 'data' => new \stdClass()];
       }
       $response = $this->postQuill($metadata['task'], array_merge(
         $metadata,
@@ -469,7 +469,7 @@ class Quill
       ));
 
       if (isset($response['error'])) {
-        return ['status' => 'error', 'error' => $response['error'], 'data' => new stdClass()];
+        return ['status' => 'error', 'error' => $response['error'], 'data' => new \stdClass()];
       }
 
       if (isset($response['metadata'])) {
@@ -506,11 +506,11 @@ class Quill
       }
 
       return [
-        'data' => $responseMetadata ? $responseMetadata : new stdClass(),
+        'data' => $responseMetadata ? $responseMetadata : new \stdClass(),
         'queries' => $results,
         'status' => 'success'
       ];
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
       return [
         'status' => 'error',
         'error' => $e->getMessage(),
@@ -575,7 +575,7 @@ class Quill
             ];
           }, $queryResult['fields']);
           return array_merge($table, ['columns' => $columns, 'rows' => $queryResult['rows']]);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
           return array_merge($table, ['error' => 'Error fetching columns']);
         }
       }, $queries);
@@ -682,7 +682,7 @@ class Quill
     if ($response === false) {
       $error = curl_error($curl);
       curl_close($curl);
-      throw new Exception("cURL Error: $error");
+      throw new \Exception("cURL Error: $error");
     }
 
     // Optionally, get additional info about the HTTP request

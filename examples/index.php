@@ -1,9 +1,10 @@
 <?php
+namespace Quill;
 // Include the Quill class
 require_once '../src/Quill.php';
 require '../vendor/autoload.php';
 
-$dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
+$dotenv = \Dotenv\Dotenv::createImmutable(dirname(__DIR__));
 $dotenv->load();
 // Set up the necessary configuration
 $privateKey = $_ENV['PRIVATE_KEY'];
