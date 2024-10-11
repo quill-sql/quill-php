@@ -1,4 +1,5 @@
 <?php
+
 namespace Quill;
 // Include the Quill class
 require_once '../src/Quill.php';
@@ -37,12 +38,11 @@ if ($requestMethod === 'OPTIONS') {
 
 if ($requestMethod == 'GET' && $endpoint == '/') {
     echo 'Hello, World!';
-}
-else if ($requestMethod === 'POST' && $endpoint === '/quill') {
+} else if ($requestMethod === 'POST' && $endpoint === '/quill') {
     // Get the POST data
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
-    $orgId = isSet($data['orgId']) ? $data['orgId'] : (isSet($data['metadata']['orgId']) ? $data['metadata']['orgId'] : null);
+    $orgId = isset($data['orgId']) ? $data['orgId'] : (isset($data['metadata']['orgId']) ? $data['metadata']['orgId'] : null);
     // Validate data
     if (isset($data['metadata'])) {
         $params = [
