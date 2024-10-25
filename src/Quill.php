@@ -28,6 +28,7 @@ class Quill
     {
         $orgId = $params['orgId'];
         $metadata = $params['metadata'];
+        $filters = $params['filters'] ?? null;
 
         $metadata['databaseType'] = $metadata['databaseType'] ?? null;
 
@@ -56,7 +57,8 @@ class Quill
             $response = $this->postQuill($metadata['task'], array_merge(
                 $metadata,
                 $preQueryResults,
-                ['orgId' => $orgId, 'viewQuery' => $metadata['preQueries'][0] ?? null]
+                ['orgId' => $orgId, 'viewQuery' => $metadata['preQueries'][0] ?? null],
+                ['sdkFilters' => $filters]
             ));
 
             if (isset($response['error'])) {

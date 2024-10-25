@@ -3,6 +3,7 @@
 namespace Quill;
 // Include the Quill class
 require_once '../src/Quill.php';
+require_once '../src/Models/Filters.php';
 require '../vendor/autoload.php';
 
 $dotenv = \Dotenv\Dotenv::createImmutable(dirname(__DIR__));
@@ -50,6 +51,34 @@ if ($requestMethod == 'GET' && $endpoint == '/') {
             'orgId' => $orgId
         ];
 
+        // Call the query method
+        $response = $quill->query($params);
+        // Return JSON response
+        header('Content-Type: application/json');
+        $body = json_encode($response, JSON_PRETTY_PRINT);
+        echo $body;
+        exit;
+    } else {
+        // Invalid data
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid request payload.'], JSON_PRETTY_PRINT);
+        exit;
+    }
+} else if ($requestMethod === 'POST' && $endpoint === '/quill-filtered') {
+    // Get the POST data
+    $input = file_get_contents('php://input');
+    $data = json_decode($input, true);
+    $orgId = isset($data['orgId']) ? $data['orgId'] : (isset($data['metadata']['orgId']) ? $data['metadata']['orgId'] : null);
+    error_log(var_export($data['metadata'], true));
+    // Validate data
+    if (isset($data['metadata'])) {
+        $params = [
+            'metadata' => $data['metadata'],
+            'orgId' => $orgId,
+            'filters' => [
+                new Filter(FilterType::STRING_FILTER, StringOperator::IS_EXACTLY, 'Chevron', 'merchant', 'transactions')
+            ]
+        ];
         // Call the query method
         $response = $quill->query($params);
         // Return JSON response
