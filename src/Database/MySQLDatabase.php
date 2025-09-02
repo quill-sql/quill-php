@@ -29,6 +29,10 @@ class MySQLDatabase implements DatabaseInterface
                 // Handle query error
                 // Note: may never be reached since an exception is thrown on error
                 echo "Error: " . $this->connection->error;
+                return [
+                    'fields' => [],
+                    'rows' => [],
+                ];
             } else {
                 if ($result === true) {
                     // no data returned
@@ -39,10 +43,11 @@ class MySQLDatabase implements DatabaseInterface
                 }
                 // Process the result
                 $fields = $result->fetch_fields();
+                $mappedFields = [];
 
                 foreach ($fields as $field) {
                     $mappedFields[] = [
-                        'name' => $field->name,
+                        'name' => strtolower($field->name),
                         'dataTypeID' => TypeConverter::mysqlDataTypeIdToPostgresType($field->type)
                     ];
                 }
@@ -50,20 +55,25 @@ class MySQLDatabase implements DatabaseInterface
                 $processRows = [];
                 if ($result) {
                     while ($row = $result->fetch_assoc()) {
+                        // Normalize field names to lowercase for consistency
+                        $normalizedRow = [];
                         foreach ($row as $key => $value) {
+                            $normalizedKey = strtolower($key);
                             if ($value === null) {
-                                $row[$key] = null;
+                                $normalizedRow[$normalizedKey] = null;
                             } else {
                                 // Attempt to decode the value as JSON
                                 $decodedValue = json_decode($value, true);
 
                                 // Check if the decoding was successful and if the result is an array or object
                                 if (json_last_error() === JSON_ERROR_NONE && (is_array($decodedValue) || is_object($decodedValue))) {
-                                    $row[$key] = $decodedValue;
+                                    $normalizedRow[$normalizedKey] = $decodedValue;
+                                } else {
+                                    $normalizedRow[$normalizedKey] = $value;
                                 }
                             }
                         }
-                        $processRows[] = $row;
+                        $processRows[] = $normalizedRow;
                     }
                 }
                 return [
@@ -80,69 +90,65 @@ class MySQLDatabase implements DatabaseInterface
 
     public function getSchemas(): array
     {
-        $sql = `SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA
-    WHERE schema_name != 'information_schema' 
-    AND schema_name != 'performance_schema'
-    and schema_name != 'sys';`;
+        $sql = "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA
+                WHERE schema_name != 'information_schema' 
+                AND schema_name != 'performance_schema'
+                AND schema_name != 'sys'";
         $results = $this->query($sql);
         $schemaNames = array_map(function ($row) {
-            return $row['SCHEMA_NAME'];
-        }, $results);
+            return strtolower($row['SCHEMA_NAME']);
+        }, $results['rows']);
         return $schemaNames;
     }
 
     public function getTablesBySchema(array $schemaNames): array
     {
-        // Implement getTablesBySchema method
-        $allColumns = [];
+        $allTables = [];
 
         foreach ($schemaNames as $schema) {
             $sql = "SELECT TABLE_NAME, TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '$schema'";
-            $result = mysqli_query($this->connection, $sql);
+            $results = $this->query($sql);
 
-            if ($result) {
-                while ($row = mysqli_fetch_assoc($result)) {
-                    $allColumns[] = [
-                        'tableName' => $row['TABLE_NAME'],
-                        'schemaName' => $row['TABLE_SCHEMA']
-                    ];
-                }
+            foreach ($results['rows'] as $row) {
+                $allTables[] = [
+                    'tableName' => strtolower($row['TABLE_NAME']),
+                    'schemaName' => strtolower($row['TABLE_SCHEMA'])
+                ];
             }
         }
 
-        return $allColumns;
+        return $allTables;
     }
 
     public function getColumnInfoBySchema(string $schemaName, array $tables): array
     {
         $allColumns = [];
-        foreach ($tables as $tableName) {
-            $query = "
-              SELECT COLUMN_NAME AS columnName, DATA_TYPE AS dataType 
-              FROM INFORMATION_SCHEMA.COLUMNS 
-              WHERE TABLE_SCHEMA = '{$tableName['schemaName']}' 
-              AND TABLE_NAME = '{$tableName['tableName']}'
-          ";
+        foreach ($tables as $tableInfo) {
+            $tableName = $tableInfo['tableName'];
+            $schema = $tableInfo['schemaName'];
+            
+            $sql = "SELECT COLUMN_NAME AS column_name, DATA_TYPE AS data_type 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = '$schema' 
+                    AND TABLE_NAME = '$tableName'";
 
-            $result = mysqli_query($this->connection, $query);
+            $results = $this->query($sql);
 
-            if ($result) {
-                $columns = [];
-                while ($row = mysqli_fetch_assoc($result)) {
-                    $columns[] = [
-                        'columnName' => $row['columnName'],
-                        'displayName' => $row['columnName'],
-                        'dataTypeID' => TypeConverter::mysqlTextDataTypeToPostgresOID($row['dataType']),
-                        'fieldType' => $row['dataType']
-                    ];
-                }
-
-                $allColumns[] = [
-                    'tableName' => "{$tableName['schemaName']}.{$tableName['tableName']}",
-                    'displayName' => "{$tableName['schemaName']}.{$tableName['tableName']}",
-                    'columns' => $columns
+            $columns = [];
+            foreach ($results['rows'] as $row) {
+                $columns[] = [
+                    'columnName' => strtolower($row['column_name']),
+                    'displayName' => strtolower($row['column_name']),
+                    'dataTypeID' => TypeConverter::mysqlTextDataTypeToPostgresOID($row['data_type']),
+                    'fieldType' => $row['data_type']
                 ];
             }
+
+            $allColumns[] = [
+                'tableName' => "{$schema}.{$tableName}",
+                'displayName' => "{$schema}.{$tableName}",
+                'columns' => $columns
+            ];
         }
         return $allColumns;
     }

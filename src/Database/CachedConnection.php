@@ -6,7 +6,7 @@ class CachedConnection
 {
     public $databaseType;
     public $pool;
-    public $orgId;
+    public $tenantIds;
 
     public function __construct(string $databaseType, array $config, ?array $cacheConfig = null)
     {

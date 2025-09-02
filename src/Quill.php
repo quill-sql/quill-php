@@ -6,6 +6,7 @@ use Quill\Database\ConnectionFactory;
 use Quill\Database\CachedConnection;
 use Quill\Config\Constants;
 use Quill\Helpers\QueryHelper;
+use Quill\Helpers\TenantHelper;
 use Quill\Helpers\TypeConverter;
 
 class Quill
@@ -14,28 +15,107 @@ class Quill
     private $baseUrl;
     private $config;
 
+    public const SINGLE_TENANT = 'QUILL_SINGLE_TENANT';
+    public const ALL_TENANTS = 'QUILL_ALL_TENANTS';
+
     public function __construct(string $privateKey, string $databaseType, ?string $databaseConnectionString = null, ?array $databaseConfig = null, ?string $metadataServerURL = null)
     {
+        if (!$privateKey) {
+            throw new \Exception("Private key is required");
+        }
+
+        if (!$databaseType) {
+            throw new \Exception("Database type is required"); 
+        }
+
+        if (!$databaseConnectionString && !$databaseConfig) {
+            throw new \Exception("You must provide either DatabaseConnectionString or DatabaseConfig");
+        }
+
         $this->baseUrl = $metadataServerURL ?: Constants::HOST;
         $this->config = "Authorization: Bearer {$privateKey}";
 
-        $credentials = $databaseConfig ?: ConnectionFactory::formatMysqlConfig($databaseConnectionString);
+        $credentials = $databaseConfig ?: $this->formatDatabaseConfig($databaseType, $databaseConnectionString);
 
         $this->targetConnection = new CachedConnection($databaseType, $credentials);
     }
 
     public function query(array $params): array
     {
-        $orgId = $params['orgId'];
+        $tenants = $params['tenants'] ?? null;
+        $flags = $params['flags'] ?? null;
         $metadata = $params['metadata'];
         $filters = $params['filters'] ?? null;
 
+        if ($tenants && empty($tenants)) {
+            throw new \Exception("You may not pass an empty tenants array.");
+        }
+
+        if ($flags && empty($flags)) {
+            throw new \Exception("You may not pass an empty flags array.");
+        }
+
+        if (!isset($metadata['task'])) {
+            return ['error' => 'Missing task.', 'status' => 'error', 'data' => new \stdClass()];
+        }
+
         $metadata['databaseType'] = $metadata['databaseType'] ?? null;
 
-        $this->targetConnection->orgId = $orgId;
+        $this->targetConnection->tenantIds = $tenants ? TenantHelper::extractTenantIds($tenants) : null;
         $responseMetadata = [];
 
         try {
+            $tenantFlags = null;
+            $flagTasks = ['dashboard', 'report', 'item', 'report-info', 'filter-options'];
+
+            // Handle flag tasks
+            if (
+                in_array($metadata['task'], $flagTasks) &&
+                $tenants[0] !== 'QUILL_ALL_TENANTS' &&
+                $tenants[0] !== 'QUILL_SINGLE_TENANT'
+            ) {
+                $response = $this->postQuill('tenant-mapped-flags', [
+                    'reportId' => $metadata['reportId'] ?? $metadata['dashboardItemId'] ?? null,
+                    'dashboardName' => $metadata['name'] ?? null,
+                    'clientId' => $metadata['clientId'] ?? null,
+                    'tenants' => $tenants,
+                    'flags' => $flags
+                ]);
+
+                if (isset($response['error'])) {
+                    return [
+                        'status' => 'error',
+                        'error' => $response['error'],
+                        'data' => $response['metadata'] ?? new \stdClass()
+                    ];
+                }
+
+                $flagQueryResults = $this->runQueries(
+                    $response['queries'],
+                    $this->targetConnection->databaseType
+                );
+
+                $tenantFlags = array_map(function ($tenantField, $index) use ($flagQueryResults) {
+                    $uniqueFlags = array_unique(array_map(function ($row) {
+                        return $row['quill_flag'];
+                    }, $flagQueryResults['queryResults'][$index]['rows']));
+
+                    return [
+                        'tenantField' => $tenantField,
+                        'flags' => array_values($uniqueFlags)
+                    ];
+                }, $response['metadata']['queryOrder'], array_keys($response['metadata']['queryOrder']));
+            } elseif ($tenants[0] === 'QUILL_SINGLE_TENANT' && $flags) {
+                if (!empty($flags) && !isset($flags[0]['tenantField'])) {
+                    $tenantFlags = [[
+                        'tenantField' => 'QUILL_SINGLE_TENANT',
+                        'flags' => $flags
+                    ]];
+                } else {
+                    $tenantFlags = $flags;
+                }
+            }
+
             $preQueryResults = isset($metadata['preQueries'])
                 ? $this->runQueries(
                     $metadata['preQueries'],
@@ -44,6 +124,7 @@ class Quill
                     isset($metadata['runQueryConfig']) ? $metadata['runQueryConfig'] : null
                 )
                 : [];
+
             if (isset($metadata['runQueryConfig']['overridePost']) && $metadata['runQueryConfig']['overridePost']) {
                 return [
                     'data' => ['queryResults' => $preQueryResults ?? new \stdClass()],
@@ -51,14 +132,15 @@ class Quill
                 ];
             }
 
-            if (!isset($metadata['task'])) {
-                return ['error' => 'Missing task.', 'status' => 'error', 'data' => new \stdClass()];
-            }
             $response = $this->postQuill($metadata['task'], array_merge(
                 $metadata,
                 $preQueryResults,
-                ['orgId' => $orgId, 'viewQuery' => $metadata['preQueries'][0] ?? null],
-                ['sdkFilters' => $filters]
+                [
+                    'sdkFilters' => $filters ?? [],
+                    'tenants' => $tenants,
+                    'flags' => $tenantFlags,
+                    'viewQuery' => $metadata['preQueries'][0] ?? null
+                ]
             ));
 
             if (isset($response['error'])) {
@@ -186,6 +268,26 @@ class Quill
                 $queryResult
             );
             return $schemaInfo;
+        } elseif (isset($runQueryConfig['runIndividualQueries']) && $runQueryConfig['runIndividualQueries']) {
+            // so that one query doesn't fail the whole thing
+            // the only reason this isn't the default behavior is for backwards compatibility
+            $queryResults = [];
+            foreach ($queries as $query) {
+                try {
+                    $runQuery = $query;
+                    if (isset($runQueryConfig['limitBy'])) {
+                        $runQuery = $this->applyLimit($query, $runQueryConfig['limitBy']);
+                    }
+                    $queryResult = $this->targetConnection->query($runQuery);
+                    $queryResults[] = $queryResult;
+                } catch (\Exception $e) {
+                    $queryResults[] = [
+                        'query' => $query,
+                        'error' => $e->getMessage(),
+                    ];
+                }
+            }
+            $results['queryResults'] = $queryResults;
         } else {
             if (isset($runQueryConfig['limitThousand']) && $runQueryConfig['limitThousand']) {
                 $queries = array_map(function ($query) {
@@ -270,10 +372,62 @@ class Quill
         // Optionally, get additional info about the HTTP request
         $info = curl_getinfo($curl);
         curl_close($curl);
-
-        // Assuming the response is JSON
-        $responseData = json_decode($response, true);
-
+        
+        $responseData = json_decode($response, false); // Decode as object first
+        $responseData = $this->preserveEmptyObjectsInArray($responseData);
+        
         return $responseData;
+    }
+    
+
+    private function preserveEmptyObjectsInArray($data) {
+        if (is_object($data)) {
+            // Convert object to an associative array and recurse
+            $data = (array)$data;
+            foreach ($data as $key => $value) {
+                $data[$key] = $this->preserveEmptyObjectsInArray($value);
+            }
+            return count($data) === 0 ? (object)[] : $data; // Preserve empty objects
+        } elseif (is_array($data)) {
+            // Check if the array is associative
+            $isAssoc = array_keys($data) !== range(0, count($data) - 1);
+    
+            foreach ($data as $key => $value) {
+                $data[$key] = $this->preserveEmptyObjectsInArray($value);
+            }
+    
+            return $isAssoc ? $data : array_values($data); // Keep it an indexed array if needed
+        }
+    
+        return $data;
+    }
+
+    public function applyLimit($query, $limit)
+    {
+        // Simple logic: if query already has a limit, don't add another
+        if (stripos($this->targetConnection->databaseType, 'mssql') !== false) {
+            if (preg_match('/SELECT TOP \\d+/i', $query)) {
+                return $query;
+            }
+            return preg_replace('/select/i', 'SELECT TOP ' . $limit, $query, 1);
+        } else {
+            if (stripos($query, 'limit ') !== false) {
+                return $query;
+            }
+            return rtrim($query, ';') . ' limit ' . $limit;
+        }
+    }
+
+    private function formatDatabaseConfig(string $databaseType, string $connectionString): array
+    {
+        switch (strtolower($databaseType)) {
+            case 'mysql':
+                return ConnectionFactory::formatMysqlConfig($connectionString);
+            case 'postgresql':
+            case 'postgres':
+                return ConnectionFactory::formatPostgresConfig($connectionString);
+            default:
+                throw new \InvalidArgumentException("Unsupported database type: {$databaseType}");
+        }
     }
 }

@@ -43,12 +43,16 @@ if ($requestMethod == 'GET' && $endpoint == '/') {
     // Get the POST data
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
-    $orgId = isset($data['orgId']) ? $data['orgId'] : (isset($data['metadata']['orgId']) ? $data['metadata']['orgId'] : null);
+    
+    $orgId = !isset($data['metadata']['orgId']) || $data['metadata']['orgId'] === '*' 
+        ? Quill::ALL_TENANTS 
+        : $data['metadata']['orgId'];
+
     // Validate data
     if (isset($data['metadata'])) {
         $params = [
             'metadata' => $data['metadata'],
-            'orgId' => $orgId
+            'tenants' => isset($data['metadata']['tenants']) ? $data['metadata']['tenants'] : [$orgId]
         ];
 
         // Call the query method
@@ -68,13 +72,18 @@ if ($requestMethod == 'GET' && $endpoint == '/') {
     // Get the POST data
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
-    $orgId = isset($data['orgId']) ? $data['orgId'] : (isset($data['metadata']['orgId']) ? $data['metadata']['orgId'] : null);
+    
+    // Update tenant handling to match Node.js implementation
+    $orgId = !isset($data['metadata']['orgId']) || $data['metadata']['orgId'] === '*' 
+        ? Quill::ALL_TENANTS 
+        : $data['metadata']['orgId'];
+
     error_log(var_export($data['metadata'], true));
     // Validate data
     if (isset($data['metadata'])) {
         $params = [
             'metadata' => $data['metadata'],
-            'orgId' => $orgId,
+            'tenants' => isset($data['metadata']['tenants']) ? $data['metadata']['tenants'] : [$orgId],
             'filters' => [
                 new Filter(FilterType::STRING_FILTER, StringOperator::IS_EXACTLY, 'Chevron', 'merchant', 'transactions')
             ]

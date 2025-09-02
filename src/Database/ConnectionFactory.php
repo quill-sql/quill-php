@@ -11,6 +11,11 @@ class ConnectionFactory
                 $database = new MySQLDatabase();
                 $database->connect($config);
                 return $database;
+            case 'postgresql':
+            case 'postgres':
+                $database = new PostgreSQLDatabase();
+                $database->connect($config);
+                return $database;
             default:
                 throw new \InvalidArgumentException("Unsupported database type: {$databaseType}");
         }
@@ -26,6 +31,19 @@ class ConnectionFactory
             'password' => $parsedUrl['pass'] ?? '',
             'database' => ltrim($parsedUrl['path'], '/') ?? '',
             'port' => $parsedUrl['port'] ?? '3306'
+        ];
+    }
+
+    public static function formatPostgresConfig(string $connectionString): array
+    {
+        $parsedUrl = parse_url($connectionString);
+
+        return [
+            'host' => $parsedUrl['host'] ?? '',
+            'user' => $parsedUrl['user'] ?? '',
+            'password' => $parsedUrl['pass'] ?? '',
+            'database' => ltrim($parsedUrl['path'], '/') ?? '',
+            'port' => $parsedUrl['port'] ?? '5432'
         ];
     }
 }

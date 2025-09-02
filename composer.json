@@ -1,9 +1,11 @@
 {
   "name": "quill/quill-php",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Quill PHP SDK",
   "require": {
     "php": ">=8.0",
+    "ext-pdo": "*",
+    "ext-pdo_pgsql": "*",
     "symfony/http-foundation": "^7.1",
     "symfony/routing": "^7.1",
     "symfony/event-dispatcher": "^7.1",
